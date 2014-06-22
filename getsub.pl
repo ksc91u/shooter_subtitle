@@ -10,17 +10,19 @@ use Digest::MD5 qw(md5 md5_hex md5_base64);
 use LWP::UserAgent;
 use HTTP::Request::Common qw{ POST };
 use File::stat;
+use File::Copy;
 use Fcntl 'SEEK_SET';
 use JSON;
+use File::Path qw(rmtree);
 
 &getSub($ARGV[0]);
 &conv();
 &moveTo($ARGV[0]);
-#system("rm -rf /tmp/sub");
+rmtree("/tmp/sub");
 
 
 sub getSub{
-	system("mkdir /tmp/sub");
+	mkdir("/tmp/sub");
 	my $f = shift;
 	my $file_size = stat($f)->size;
 	my @md5 = ();
@@ -57,14 +59,13 @@ sub getSub{
 		$url = $j->{'Files'}[0]->{'Link'};
 		$t = basename($f);
 		$outname = "/tmp/sub/$t.$counter.$ext";
-		#$print "wget --no-check-certificate -O $outname $url\n";
 		system("wget -Y off --no-check-certificate -O $outname \"$url\" 2>/dev/null 1>/dev/null");
 		$file_size = stat($outname)->size;
 		if($file_size == 0) {next;}
 		$counter++;
 		$encoding = guess_encoding("$outname");
 		$outname2 = "/tmp/sub/$t.$encoding.$ext";
-		system("mv $outname $outname2");
+		move($outname,$outname2);
 	}
 
 }
@@ -83,28 +84,10 @@ sub moveTo{
 		@subname_parts = split /\./,$subname;
 		$s = $#subname_parts;
 		$sub_name = join(".", ($episode_name, $subname_parts[$s-1], $subname_parts[$s] ));
-		system("mv -f \"/tmp/sub/$subname\" \"$directories/$sub_name\"");
+		move("/tmp/sub/$subname", "$directories/$sub_name");
 	}
 	closedir DIR;
 
-}
-
-sub extract{
-	$z = shift;
-	system("mkdir /tmp/sub");
-
-	#if($z=~m/\.rar$/){
-	#	system("unrar e $z /tmp/sub");
-	#}elsif($z=~m/\.zip$/){
-	#	system("unzip $z -d /tmp/sub");
-	#}else{
-	#	system("tar xvf $z -C /tmp/sub");
-	#}
-	system("unar -no-directory -output-directory /tmp/sub $z");
-	system("cd /tmp/sub; for i in `find . -type d|grep -v \"\\.\$\"`; do mv \$i/*.ass \$i/*.srt \$i/*.aas /tmp/sub/; done");
-	system("rm -f /tmp/sub/*简体*");
-	#system("rm -f /tmp/sub/*gb*");
-	#system("rm -f /tmp/sub/*lol*");
 }
 
 sub guess_encoding{
@@ -124,15 +107,16 @@ sub conv{
 	opendir ( DIR, "/tmp/sub") || die "Error in opendir";
 	@files = grep {/\.(ass|aas|srt)$/} readdir(DIR) ;
 	foreach $filename (@files){
-		$encoding = uc(&guess_encoding("/tmp/sub/$filename"));
+		$srcfile = "/tmp/sub/$filename";
+		$encoding = uc(&guess_encoding($srcfile));
 		if ($encoding=~/BIG/){
 			$encoding = "BIG5-HKSCS";
 		}
 		print "Encoding ... $encoding\n";
 		unless( !defined($encoding)){
-			system("iconv -f $encoding -t utf-8 \"/tmp/sub/$filename\" > /tmp/sub/123");
+			system("iconv -f $encoding -t utf-8 \"$srcfile\" > /tmp/sub/123");
 		}
-		system("mv -f  /tmp/sub/123 \"/tmp/sub/$filename\"");
+		move("/tmp/sub/123",$srcfile);
 	}
 	closedir DIR;
 }
