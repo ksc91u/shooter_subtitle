@@ -24,6 +24,9 @@ rmtree("/tmp/sub");
 sub getSub{
 	mkdir("/tmp/sub");
 	my $f = shift;
+	my($filename, $directories, $suffix) = fileparse($f);
+	$filename =~ /(.*)\..*?/;
+	$filename = $1;
 	my $file_size = stat($f)->size;
 	my @md5 = ();
 	open FILE, $f;
@@ -57,14 +60,18 @@ sub getSub{
 	foreach my $j (@$message){
 		$ext = $j->{'Files'}[0]->{'Ext'};
 		$url = $j->{'Files'}[0]->{'Link'};
-		$t = basename($f);
 		$outname = "/tmp/sub/$t.$counter.$ext";
 		system("wget -Y off --no-check-certificate -O $outname \"$url\" 2>/dev/null 1>/dev/null");
 		$file_size = stat($outname)->size;
 		if($file_size == 0) {next;}
+
 		$counter++;
 		$encoding = guess_encoding("$outname");
-		$outname2 = "/tmp/sub/$t.$encoding.$ext";
+		$outname2 = "/tmp/sub/$filename.$ext";
+		if (-e $outname2) {
+			$outname2 = "/tmp/sub/$filename.$encoding.$ext";
+		} 
+		print "$outname2\n";
 		move($outname,$outname2);
 	}
 
@@ -74,17 +81,11 @@ sub moveTo{
 	$f = shift;
 	($filename, $directories, $suffix) = fileparse($f);
 
-	@filename_parts = split /\./,$filename;
-	pop @filename_parts;
-	$episode_name = join(".",@filename_parts);
 	
 	opendir ( DIR, "/tmp/sub") || die "Error in opendir";
 	@files = grep {/\.(ssa|ass|aas|srt)$/} readdir(DIR) ;
 	foreach $subname (@files){
-		@subname_parts = split /\./,$subname;
-		$s = $#subname_parts;
-		$sub_name = join(".", ($episode_name, $subname_parts[$s-1], $subname_parts[$s] ));
-		move("/tmp/sub/$subname", "$directories/$sub_name");
+		move("/tmp/sub/$subname", "$directories/");
 	}
 	closedir DIR;
 
@@ -99,6 +100,9 @@ sub guess_encoding{
 	if(!defined($encoding) || length($encoding) < 3){
 		return "ISO8859-1";
 	}else{
+		if ($encoding=~/BIG/){
+			$encoding = "BIG5-HKSCS";
+		}
 		return $encoding;
 	}
 }
@@ -109,9 +113,6 @@ sub conv{
 	foreach $filename (@files){
 		$srcfile = "/tmp/sub/$filename";
 		$encoding = uc(&guess_encoding($srcfile));
-		if ($encoding=~/BIG/){
-			$encoding = "BIG5-HKSCS";
-		}
 		print "Encoding ... $encoding\n";
 		unless( !defined($encoding)){
 			system("iconv -f $encoding -t utf-8 \"$srcfile\" > /tmp/sub/123");
