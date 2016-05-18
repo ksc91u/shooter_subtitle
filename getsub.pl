@@ -1,7 +1,6 @@
-#!/usr/bin/perl
+#!/opt/local/bin/perl
 use POSIX qw(ceil floor);
 use File::Basename;
-use Encode;
 require Encode::Detect;
 use base qw(Encode::Encoding);
 use Encode qw(find_encoding);
@@ -54,19 +53,22 @@ sub getSub{
 	$json = JSON->new->allow_nonref;
 	my $resp = $ua->request($req);
 	if ($resp->is_success) {
-	    $message = $json->decode($resp->decoded_content);
+	    eval {
+	    	$message = $json->decode($resp->decoded_content);
+	    };
 	}
 	$counter = 0;
 	foreach my $j (@$message){
 		$ext = $j->{'Files'}[0]->{'Ext'};
 		$url = $j->{'Files'}[0]->{'Link'};
+		print "$url\n";
 		$outname = "/tmp/sub/$t.$counter.$ext";
-		system("wget -Y off --no-check-certificate -O $outname \"$url\" 2>/dev/null 1>/dev/null");
+		system("wget -Y off -O $outname \"$url\" 2>/dev/null 1>/dev/null");
 		$file_size = stat($outname)->size;
 		if($file_size == 0) {next;}
 
 		$counter++;
-		$encoding = guess_encoding("$outname");
+		$encoding = my_guess_encoding("$outname");
 		$outname2 = "/tmp/sub/$filename.$ext";
 		if (-e $outname2) {
 			$outname2 = "/tmp/sub/$filename.$encoding.$ext";
@@ -86,22 +88,30 @@ sub moveTo{
 	@files = grep {/\.(ssa|ass|aas|srt)$/} readdir(DIR) ;
 	foreach $subname (@files){
 		move("/tmp/sub/$subname", "$directories/");
+        system("chmod -R a+w $directories");
 	}
 	closedir DIR;
 
 }
 
-sub guess_encoding{
+sub my_guess_encoding{
 	my $filename = shift;
 	local $/=undef;
 	open FILE, $filename or die "Couldn't open file: $!";
 	$string = <FILE>;
 	my $encoding = detect($string);
 	if(!defined($encoding) || length($encoding) < 3){
-		return "ISO8859-1";
+		#$encoding = guess_encoding($string, qw/big5 euc-cn utf-8 utf-16 utf-32/);
+		return "UTF-16LE";
 	}else{
 		if ($encoding=~/BIG/){
 			$encoding = "BIG5-HKSCS";
+		}
+		if ($encoding=~/GB/){
+			$encoding = "GB18030";
+		}
+		if ($encoding=~/CYRILLIC/i){
+			$encoding = "MACCYRILLIC";
 		}
 		return $encoding;
 	}
@@ -112,12 +122,14 @@ sub conv{
 	@files = grep {/\.(ass|aas|srt)$/} readdir(DIR) ;
 	foreach $filename (@files){
 		$srcfile = "/tmp/sub/$filename";
-		$encoding = uc(&guess_encoding($srcfile));
+		$encoding = uc(&my_guess_encoding($srcfile));
 		print "Encoding ... $encoding\n";
 		unless( !defined($encoding)){
-			system("iconv -f $encoding -t utf-8 \"$srcfile\" > /tmp/sub/123");
+			$r = system("/usr/bin/iconv -f $encoding -t UTF-8 \"$srcfile\" > /tmp/sub/123");
 		}
-		move("/tmp/sub/123",$srcfile);
+		if($r == 0) {
+			move("/tmp/sub/123",$srcfile);
+		}
 	}
 	closedir DIR;
 }
